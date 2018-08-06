@@ -1,0 +1,62 @@
+upstream gunicorn_server {
+    # Docker コンテナからホストの Mac にアクセスには「host.docker.internal」ホスト名を使う。
+    # https://docs.docker.com/docker-for-mac/networking/#use-cases-and-workarounds
+    server host.docker.internal:8000;
+}
+
+server {
+    listen ${NGINX_PORT};
+    server_name ${NGINX_HOST};
+    server_tokens off;
+
+    client_max_body_size 3M;
+    client_body_buffer_size 128k;
+    send_timeout 300s;
+
+    gzip  on;
+    gzip_comp_level 1;
+    gzip_types    text/plain
+                  text/xml
+                  text/css
+                  text/script
+                  application/json;
+
+    root ${NGINX_DOCUMENT_ROOT};
+    index  index.html index.htm;
+
+    error_page  404              /404.html;
+    location = /404.html {
+        root   /usr/share/nginx/html;
+    }
+
+    # redirect server error pages to the static page /50x.html
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   html;
+    }
+    location = /favicon.ico {
+        empty_gif;
+        access_log    off;
+        log_not_found off;
+    }
+
+    location / {
+        try_files $uri @proxy_to_app;
+    }
+
+    location @proxy_to_app {
+        proxy_read_timeout    300;
+        proxy_connect_timeout 300;
+        proxy_redirect        off;
+        proxy_buffering       on;
+        proxy_buffers         32 8k;
+
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Host              $http_host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Frame-Options   SAMEORIGIN;
+
+        proxy_pass http://gunicorn_server;
+    }
+}
